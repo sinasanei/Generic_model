@@ -1,0 +1,258 @@
+---
+title: "Clustering"
+author: "Sina Sanei"
+date: "8/29/2019"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing Data
+The data set includes growth rate computed as height/age , for a total of 550 observations. 
+There are 157 different variation of red oaks (reffered as populations) and 13 test sites which conducted the experiments. 
+
+
+```{r cars , warning=FALSE, message=FALSE}
+library(readr)
+library(dplyr)
+data <- read_csv("df.csv")
+data <- as.matrix(data[,c(2,3)])
+```
+
+## Assessing Clustering Tendency
+Before applying any clustering method on your data, it’s important to evaluate whether the data sets contains meaningful clusters (i.e.: non-random structures) or not.
+
+```{r  warning=FALSE, message=FALSE}
+library(factoextra)
+library(clustertend)
+library(ggplot2)
+res <- get_clust_tendency(data[sample(nrow(data),1000),], n = 1000-1, graph = FALSE)
+res$hopkins_stat
+```
+It can be seen that our set is highly clusterable (the H value = 0.1710 which is well below the threshold= 0.5).  
+
+visualizing the distance metrics : 
+
+
+```{r warning=FALSE, message=FALSE}
+dist.euc <- get_dist(data, stand = FALSE, method = "euclidean")
+
+#fviz_dist(dist.euc , show_labels =FALSE )
+  #, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+dist.man <- get_dist(data, stand = FALSE, method = "manhattan")
+
+#fviz_dist(dist.man) 
+  # gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+#dist.cor <- get_dist(data.clust,  stand = FALSE, method = "pearson")
+#fviz_dist(dist.cor, show_labels =FALSE,
+         # gradient = list(low = "#380474", mid = "white", high = "#FC4E07"))
+```
+
+
+## K-means Clustering
+
+The k-means clustering requires the users to specify the number of clusters to be generated.
+for the euclidean distance metric:
+
+```{r warning=FALSE, message=FALSE}
+fviz_nbclust(data.clust,diss = dist.euc, kmeans, method = "wss" , k.max = 15) +
+  geom_vline(xintercept = 5, linetype = 2)
+
+fviz_nbclust(data.clust,diss = dist.euc, kmeans, method = "silhouette" , k.max = 15) +
+  geom_vline(xintercept = 6, linetype = 2)
+
+fviz_nbclust(data.clust,diss = dist.euc, kmeans, method = "gap_stat" , k.max = 45) +
+  geom_vline(xintercept = 6, linetype = 2)
+```
+
+for the manhattan distance metric:
+
+```{r warning=FALSE, message=FALSE}
+
+dist.man <- get_dist(data.clust, stand = FALSE , method = "manhattan")
+
+fviz_nbclust(data.clust, kmeans, method = "wss",  diss = dist.man , k.max = 15)  +
+  geom_vline(xintercept = 5 , linetype = 2)
+
+fviz_nbclust(data.clust, kmeans, method = "silhouette",  diss = dist.man , k.max = 10)  
+```
+
+for the pearson distance metric:
+
+```{r warning=FALSE, message=FALSE}
+fviz_nbclust(data.clust, kmeans, method = "wss",  diss = dist.cor , k.max = 25)  +
+  geom_vline(xintercept =c(2, 5), linetype = 2)
+
+fviz_nbclust(data.clust, kmeans, method = "silhouette",  diss = dist.cor , k.max = 25)  +
+  geom_vline(xintercept =c(2, 5), linetype = 2)
+```
+
+Compute k-means with k = 5
+
+```{r warning=FALSE, message=FALSE}
+set.seed(17)
+km.euc <- kmeans(data, 6 , nstart = 25)
+print(km.euc)
+
+aggregate(data.clust, by=list(cluster=km.euc$cluster), mean)
+```
+  
+Visualizing k-means with k=6:  
+
+```{r warning=FALSE, message=FALSE}
+fviz_cluster(km.euc, data = data.clust,
+ellipse.type = "euclid", # Concentration ellipse 
+star.plot = TRUE, # Add segments from centroids to items 
+ggtheme = theme_minimal()
+)
+
+fviz_cluster(list(data = data.clust, cluster = km.euc$cluster),
+             ellipse.type = "convex", geom = "point", stand = FALSE,
+             palette = "jco", ggtheme = theme_classic())
+```
+
+
+Notice that kmeans is sensitive to outliers , we can try to use PAM (Partitioning Around Medoids, Kaufman & Rousseeuw, 1990) algorithm, which is less sensitive to outliers.
+
+## K-Medoids Clustering  
+
+In k-medoids clustering, each cluster is represented by one of the data point in the cluster. These points are named cluster medoids.   
+Estimating the optimal number of clusters:  
+
+```{r warning=FALSE, message=FALSE}
+library(cluster)
+fviz_nbclust(data.clust, pam, method = "silhouette")+geom_vline(xintercept =6 , linetype = 2) + theme_classic()
+
+fviz_nbclust(data.clust, pam, method = "wss")+geom_vline(xintercept =6 , linetype = 2) + theme_classic()
+```
+  
+computing PAM algorithm with k = 2, euclidean dist :
+
+
+```{r warning=FALSE, message=FALSE}
+pam.euc <- pam(data.clust, 5, metric = "euclidean") 
+print(pam.euc)
+
+fviz_cluster(pam.euc,
+ellipse.type = "convex", # Concentration ellipse 
+ggtheme = theme_classic()
+)
+```
+
+using Manhattan distance :
+
+```{r warning=FALSE, message=FALSE}
+pam.man <- pam(data.clust, 6, metric = "manhattan") 
+print(pam.man)
+
+fviz_cluster(pam.man,
+ellipse.type = "convex", # Concentration ellipse 
+ggtheme = theme_classic()
+)
+```  
+
+
+## DETERMINING THE OPTIMAL NUMBER OF CLUSTERS  
+There are three different methods to determine the optimal number of clusters: 
+ELbow method, Average Silhouette method and Gap statistic method.
+
+```{r warning=FALSE, message=FALSE}
+fviz_nbclust(data.clust, kmeans, method = "wss") +
+   geom_vline(xintercept = 5, linetype = 2) +
+   labs(subtitle = "Elbow method")
+```  
+
+```{r warning=FALSE, message=FALSE}
+fviz_nbclust(data.clust, kmeans, method = "silhouette") +
+   geom_vline(xintercept = 6, linetype = 2) +
+   labs(subtitle = "Silhouette method")
+```  
+
+```{r warning=FALSE, message=FALSE}
+set.seed(17)
+fviz_nbclust(data.clust, pam , method = "gap_stat", nboot = 50)+
+labs(subtitle = "Gap statistic method")
+``` 
+
+```{r warning=FALSE, message=FALSE}
+library(NbClust)
+num <- NbClust(data = data.clust, distance = "euclidean",
+              min.nc = 2, max.nc = 15, method = "kmeans")
+fviz_nbclust(num)
+``` 
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "maximum",
+              min.nc = 2, max.nc = 15, method = "kmeans")
+fviz_nbclust(num)
+```
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "manhattan",
+              min.nc = 2, max.nc = 15, method = "kmeans")
+fviz_nbclust(num)
+```
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "manhattan",
+              min.nc = 2, max.nc = 15, method = "median")
+fviz_nbclust(num)
+```
+
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "euclidean",
+              min.nc = 2, max.nc = 15, method = "median")
+fviz_nbclust(num)
+```
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "euclidean",
+              min.nc = 2, max.nc = 15, method = "centroid")
+fviz_nbclust(num)
+```
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, distance = "manhattan",
+              min.nc = 2, max.nc = 15, method = "centroid")
+fviz_nbclust(num)
+```
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, diss=dist.cor ,distance = NULL,
+              min.nc = 2, max.nc = 15 , method = "centroid")
+fviz_nbclust(num)
+```
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, diss=dist.cor ,distance = NULL,
+              min.nc = 2, max.nc = 15 , method = "kmeans")
+fviz_nbclust(num)
+```
+
+```{r warning=FALSE, message=FALSE}
+num <- NbClust(data = data.clust, diss=dist.cor ,distance = NULL,
+              min.nc = 2, max.nc = 15 , method = "ward.D2")
+fviz_nbclust(num)
+```  
+
+
+
+```{r warning=FALSE, message=FALSE}
+library(ggmap)
+library(ggConvexHull)
+loc.data <- data[,1:71] 
+loc.data <- loc.data %>% filter(popID != "752")
+loc <- c(mean(loc.data$long.ss), mean(loc.data$lat.ss))
+my_map <- get_map(c(left = -99, bottom = 32, right = -60, top = 55), zoom =5 , scale =1, maptype = 'terrain-lines')
+loc.data$clust <-pam.euc$clustering
+ggmap(my_map) +
+  geom_point(aes(long.ss, lat.ss, color=factor(clust)),shape =6,size =2,alpha=0.6, data = loc.data) +
+  geom_convexhull(data = loc.data,alpha=.5,aes(long.ss, lat.ss, fill=factor(clust), color=factor(clust)) )
+``` 
